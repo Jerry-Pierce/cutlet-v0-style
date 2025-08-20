@@ -29,6 +29,7 @@ model User {
   shortenedUrls ShortenedUrl[]
   favorites     Favorite[]
   notifications Notification[]
+  tags         Tag[]        // 사용자별 커스텀 태그
 
   @@map("users")
 }
@@ -57,13 +58,16 @@ model ShortenedUrl {
 }
 
 model Tag {
-  id        String   @id @default(cuid())
-  name      String   @unique
-  color     String   @default("#3B82F6")
-  createdAt DateTime @default(now())
+  id          String   @id @default(cuid())
+  name        String   @unique
+  color       String   @default("#3B82F6")
+  description String?
+  userId      String?  // 사용자별 커스텀 태그 지원
+  createdAt   DateTime @default(now())
 
   // Relations
   urls UrlTag[]
+  user User?  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("tags")
 }

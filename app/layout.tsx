@@ -2,10 +2,7 @@ import type React from "react"
 import type { Metadata } from "next"
 import { Nunito } from "next/font/google"
 import { Poppins } from "next/font/google"
-import { Navigation } from "@/components/navigation"
-import { Toaster } from "@/components/ui/toaster"
-import { LanguageProvider } from "@/contexts/language-context"
-import { AuthProvider } from "@/contexts/auth-context"
+import { ClientWrapper } from "@/components/client-wrapper"
 import "./globals.css"
 
 const nunito = Nunito({
@@ -44,13 +41,9 @@ html {
         `}</style>
       </head>
       <body className={`${nunito.variable} ${poppins.variable} antialiased`}>
-        <LanguageProvider>
-          <AuthProvider>
-            <Navigation />
-            <main>{children}</main>
-            <Toaster />
-          </AuthProvider>
-        </LanguageProvider>
+        <ClientWrapper>
+          {children}
+        </ClientWrapper>
       </body>
     </html>
   )

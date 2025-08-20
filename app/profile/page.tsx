@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -9,8 +9,10 @@ import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
 import { Separator } from "@/components/ui/separator"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { User, Mail, Lock, Bell, Key, Crown, Shield, Trash2, Camera, Copy, RefreshCw, BarChart3 } from "lucide-react"
+import { User, Mail, Lock, Bell, Key, Crown, Shield, Trash2, Camera, Copy, RefreshCw, BarChart3, Save, Eye, EyeOff } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { useAuth } from "@/contexts/auth-context"
+import { useRouter } from "next/navigation"
 
 const profileSections = [
   { id: "general", label: "일반 정보", icon: User },
@@ -21,26 +23,191 @@ const profileSections = [
   { id: "danger", label: "계정 관리", icon: Shield },
 ]
 
+interface ProfileData {
+  id: string
+  email: string
+  username: string
+  isPremium: boolean
+  createdAt: string
+  updatedAt: string
+  stats: {
+    totalUrls: number
+    totalFavorites: number
+  }
+}
+
 export default function ProfilePage() {
+  const { user, updateUser } = useAuth()
+  const { toast } = useToast()
+  const router = useRouter()
+  
   const [activeSection, setActiveSection] = useState("general")
-  const [profileData, setProfileData] = useState({
-    name: "김철수",
-    email: "kimcs@example.com",
-    avatar: "",
+  const [isLoading, setIsLoading] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [profileData, setProfileData] = useState<ProfileData | null>(null)
+  
+  // 폼 데이터
+  const [formData, setFormData] = useState({
+    username: "",
+    email: "",
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: ""
   })
+  
+  // 비밀번호 표시 상태
+  const [showPasswords, setShowPasswords] = useState({
+    current: false,
+    new: false,
+    confirm: false
+  })
+
+  // 알림 설정
   const [notifications, setNotifications] = useState({
     email: true,
     push: false,
     marketing: true,
   })
-  const [apiKey] = useState("cutlet_sk_1234567890abcdef")
-  const { toast } = useToast()
 
-  const handleSave = () => {
-    toast({
-      title: "저장 완료",
-      description: "프로필 정보가 성공적으로 업데이트되었습니다.",
-    })
+  // API 키 (실제로는 백엔드에서 생성)
+  const [apiKey] = useState("cutlet_sk_" + Math.random().toString(36).substr(2, 15))
+
+  // 프로필 데이터 로드
+  useEffect(() => {
+    if (!user) {
+      router.push('/auth/login')
+      return
+    }
+    loadProfile()
+  }, [user, router])
+
+  const loadProfile = async () => {
+    if (!user) return
+    
+    setIsLoading(true)
+    try {
+      const response = await fetch('/api/user/profile', {
+        credentials: 'include'
+      })
+      
+      if (response.ok) {
+        const result = await response.json()
+        setProfileData(result.data)
+        setFormData({
+          username: result.data.username || "",
+          email: result.data.email || "",
+          currentPassword: "",
+          newPassword: "",
+          confirmPassword: ""
+        })
+      } else {
+        toast({
+          title: "오류 발생",
+          description: "프로필 정보를 불러오는데 실패했습니다.",
+          variant: "destructive"
+        })
+      }
+    } catch (error) {
+      console.error('프로필 로드 오류:', error)
+      toast({
+        title: "오류 발생",
+        description: "네트워크 오류가 발생했습니다.",
+        variant: "destructive"
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleSave = async () => {
+    if (!user) return
+    
+    // 비밀번호 변경 시 확인
+    if (formData.newPassword && formData.newPassword !== formData.confirmPassword) {
+      toast({
+        title: "오류",
+        description: "새 비밀번호가 일치하지 않습니다.",
+        variant: "destructive"
+      })
+      return
+    }
+
+    setIsSaving(true)
+    try {
+      const updateData: any = {}
+      
+      if (formData.username && formData.username !== profileData?.username) {
+        updateData.username = formData.username
+      }
+      
+      if (formData.email && formData.email !== profileData?.email) {
+        updateData.email = formData.email
+      }
+      
+      if (formData.currentPassword && formData.newPassword) {
+        updateData.currentPassword = formData.currentPassword
+        updateData.newPassword = formData.newPassword
+      }
+
+      if (Object.keys(updateData).length === 0) {
+        toast({
+          title: "알림",
+          description: "변경된 내용이 없습니다.",
+        })
+        return
+      }
+
+      const response = await fetch('/api/user/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(updateData)
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        toast({
+          title: "저장 완료",
+          description: result.message || "프로필 정보가 성공적으로 업데이트되었습니다.",
+        })
+        
+        // 프로필 데이터 새로고침
+        await loadProfile()
+        
+        // 사용자 정보 업데이트
+        if (updateUser && result.data) {
+          updateUser({
+            ...user,
+            username: result.data.username,
+            email: result.data.email
+          })
+        }
+        
+        // 비밀번호 필드 초기화
+        setFormData(prev => ({
+          ...prev,
+          currentPassword: "",
+          newPassword: "",
+          confirmPassword: ""
+        }))
+      } else {
+        const error = await response.json()
+        toast({
+          title: "저장 실패",
+          description: error.error || "프로필 업데이트에 실패했습니다.",
+          variant: "destructive"
+        })
+      }
+    } catch (error) {
+      console.error('프로필 저장 오류:', error)
+      toast({
+        title: "오류 발생",
+        description: "네트워크 오류가 발생했습니다.",
+        variant: "destructive"
+      })
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   const handleCopyApiKey = () => {
@@ -49,6 +216,35 @@ export default function ProfilePage() {
       title: "복사 완료",
       description: "API 키가 클립보드에 복사되었습니다.",
     })
+  }
+
+  const handleRegenerateApiKey = () => {
+    // 실제로는 백엔드에서 새 API 키 생성
+    toast({
+      title: "알림",
+      description: "API 키 재생성 기능은 곧 추가될 예정입니다.",
+    })
+  }
+
+  const handleDeleteAccount = () => {
+    if (confirm('정말로 계정을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
+      toast({
+        title: "알림",
+        description: "계정 삭제 기능은 곧 추가될 예정입니다.",
+      })
+    }
+  }
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  if (!user || !profileData) {
+    return null
   }
 
   const renderContent = () => {
@@ -68,7 +264,7 @@ export default function ProfilePage() {
                     <Avatar className="w-20 h-20 shadow-lg shadow-black/10">
                       <AvatarImage src={profileData.avatar || "/placeholder.svg"} />
                       <AvatarFallback className="bg-primary/10 text-primary text-xl font-semibold">
-                        {profileData.name.charAt(0)}
+                        {profileData.username?.charAt(0) || profileData.email.charAt(0)}
                       </AvatarFallback>
                     </Avatar>
                     <Button
@@ -80,41 +276,49 @@ export default function ProfilePage() {
                     </Button>
                   </div>
                   <div>
-                    <h3 className="font-semibold text-lg">{profileData.name}</h3>
+                    <h3 className="font-semibold text-lg">{profileData.username || "사용자"}</h3>
                     <p className="text-muted-foreground">{profileData.email}</p>
                     <Badge variant="secondary" className="mt-2 bg-accent/10 text-accent border-accent/20">
                       <Crown className="w-3 h-3 mr-1" />
-                      프리미엄 사용자
+                      {profileData.isPremium ? "프리미엄 사용자" : "일반 사용자"}
                     </Badge>
                   </div>
                 </div>
 
                 <div className="grid gap-4">
                   <div className="grid gap-2">
-                    <Label htmlFor="name">이름</Label>
+                    <Label htmlFor="username">사용자명</Label>
                     <Input
-                      id="name"
-                      value={profileData.name}
-                      onChange={(e) => setProfileData({ ...profileData, name: e.target.value })}
+                      id="username"
+                      value={formData.username}
+                      onChange={(e) => setFormData({ ...formData, username: e.target.value })}
                       className="shadow-inner shadow-black/5"
+                      placeholder="사용자명을 입력하세요"
                     />
                   </div>
+                  
                   <div className="grid gap-2">
                     <Label htmlFor="email">이메일</Label>
                     <Input
                       id="email"
                       type="email"
-                      value={profileData.email}
-                      onChange={(e) => setProfileData({ ...profileData, email: e.target.value })}
+                      value={formData.email}
+                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                       className="shadow-inner shadow-black/5"
+                      placeholder="이메일을 입력하세요"
                     />
                   </div>
-                </div>
 
-                <div className="flex justify-end pt-4">
-                  <Button onClick={handleSave} className="shadow-lg shadow-primary/25">
-                    변경사항 저장
-                  </Button>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-sm text-muted-foreground">총 URL</Label>
+                      <p className="text-2xl font-bold text-primary">{profileData.stats.totalUrls}</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm text-muted-foreground">즐겨찾기</Label>
+                      <p className="text-2xl font-bold text-accent">{profileData.stats.totalFavorites}</p>
+                    </div>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -126,49 +330,80 @@ export default function ProfilePage() {
           <div className="space-y-6">
             <div>
               <h2 className="font-serif text-2xl font-bold mb-2">보안</h2>
-              <p className="text-muted-foreground">계정 보안을 강화하세요</p>
+              <p className="text-muted-foreground">계정 보안을 관리하세요</p>
             </div>
 
             <Card className="border-border/50 shadow-lg shadow-black/5 backdrop-blur-sm bg-card/95">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Lock className="w-5 h-5" />
-                  비밀번호 변경
-                </CardTitle>
-                <CardDescription>새로운 비밀번호로 계정을 보호하세요</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="current-password">현재 비밀번호</Label>
-                  <Input id="current-password" type="password" className="shadow-inner shadow-black/5" />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="new-password">새 비밀번호</Label>
-                  <Input id="new-password" type="password" className="shadow-inner shadow-black/5" />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="confirm-password">새 비밀번호 확인</Label>
-                  <Input id="confirm-password" type="password" className="shadow-inner shadow-black/5" />
-                </div>
-                <Button className="w-full shadow-lg shadow-primary/25">비밀번호 변경</Button>
-              </CardContent>
-            </Card>
-
-            <Card className="border-border/50 shadow-lg shadow-black/5 backdrop-blur-sm bg-card/95">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Shield className="w-5 h-5" />
-                  2단계 인증
-                </CardTitle>
-                <CardDescription>추가 보안 계층으로 계정을 보호하세요</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">2단계 인증 활성화</p>
-                    <p className="text-sm text-muted-foreground">SMS 또는 인증 앱을 통한 추가 인증</p>
+              <CardContent className="pt-6">
+                <div className="space-y-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="currentPassword">현재 비밀번호</Label>
+                    <div className="relative">
+                      <Input
+                        id="currentPassword"
+                        type={showPasswords.current ? "text" : "password"}
+                        value={formData.currentPassword}
+                        onChange={(e) => setFormData({ ...formData, currentPassword: e.target.value })}
+                        className="shadow-inner shadow-black/5 pr-10"
+                        placeholder="현재 비밀번호를 입력하세요"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                        onClick={() => setShowPasswords(prev => ({ ...prev, current: !prev.current }))}
+                      >
+                        {showPasswords.current ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </Button>
+                    </div>
                   </div>
-                  <Switch />
+
+                  <div className="grid gap-2">
+                    <Label htmlFor="newPassword">새 비밀번호</Label>
+                    <div className="relative">
+                      <Input
+                        id="newPassword"
+                        type={showPasswords.new ? "text" : "password"}
+                        value={formData.newPassword}
+                        onChange={(e) => setFormData({ ...formData, newPassword: e.target.value })}
+                        className="shadow-inner shadow-black/5 pr-10"
+                        placeholder="새 비밀번호를 입력하세요"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                        onClick={() => setShowPasswords(prev => ({ ...prev, new: !prev.new }))}
+                      >
+                        {showPasswords.new ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-2">
+                    <Label htmlFor="confirmPassword">새 비밀번호 확인</Label>
+                    <div className="relative">
+                      <Input
+                        id="confirmPassword"
+                        type={showPasswords.confirm ? "text" : "password"}
+                        value={formData.confirmPassword}
+                        onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
+                        className="shadow-inner shadow-black/5 pr-10"
+                        placeholder="새 비밀번호를 다시 입력하세요"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                        onClick={() => setShowPasswords(prev => ({ ...prev, confirm: !prev.confirm }))}
+                      >
+                        {showPasswords.confirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -180,55 +415,48 @@ export default function ProfilePage() {
           <div className="space-y-6">
             <div>
               <h2 className="font-serif text-2xl font-bold mb-2">알림 설정</h2>
-              <p className="text-muted-foreground">받고 싶은 알림을 선택하세요</p>
+              <p className="text-muted-foreground">알림 설정을 관리하세요</p>
             </div>
 
             <Card className="border-border/50 shadow-lg shadow-black/5 backdrop-blur-sm bg-card/95">
-              <CardContent className="pt-6 space-y-6">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Mail className="w-5 h-5 text-primary" />
+              <CardContent className="pt-6">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
                     <div>
-                      <p className="font-medium">이메일 알림</p>
-                      <p className="text-sm text-muted-foreground">중요한 업데이트를 이메일로 받기</p>
+                      <Label className="text-base font-medium">이메일 알림</Label>
+                      <p className="text-sm text-muted-foreground">중요한 업데이트 및 보안 알림</p>
                     </div>
+                    <Switch
+                      checked={notifications.email}
+                      onCheckedChange={(checked) => setNotifications({ ...notifications, email: checked })}
+                    />
                   </div>
-                  <Switch
-                    checked={notifications.email}
-                    onCheckedChange={(checked) => setNotifications({ ...notifications, email: checked })}
-                  />
-                </div>
-
-                <Separator />
-
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Bell className="w-5 h-5 text-accent" />
+                  
+                  <Separator />
+                  
+                  <div className="flex items-center justify-between">
                     <div>
-                      <p className="font-medium">푸시 알림</p>
-                      <p className="text-sm text-muted-foreground">브라우저 푸시 알림 받기</p>
+                      <Label className="text-base font-medium">푸시 알림</Label>
+                      <p className="text-sm text-muted-foreground">실시간 알림 및 업데이트</p>
                     </div>
+                    <Switch
+                      checked={notifications.push}
+                      onCheckedChange={(checked) => setNotifications({ ...notifications, push: checked })}
+                    />
                   </div>
-                  <Switch
-                    checked={notifications.push}
-                    onCheckedChange={(checked) => setNotifications({ ...notifications, push: checked })}
-                  />
-                </div>
-
-                <Separator />
-
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <BarChart3 className="w-5 h-5 text-secondary" />
+                  
+                  <Separator />
+                  
+                  <div className="flex items-center justify-between">
                     <div>
-                      <p className="font-medium">마케팅 알림</p>
-                      <p className="text-sm text-muted-foreground">새로운 기능 및 프로모션 정보</p>
+                      <Label className="text-base font-medium">마케팅 알림</Label>
+                      <p className="text-sm text-muted-foreground">새로운 기능 및 서비스 소개</p>
                     </div>
+                    <Switch
+                      checked={notifications.marketing}
+                      onCheckedChange={(checked) => setNotifications({ ...notifications, marketing: checked })}
+                    />
                   </div>
-                  <Switch
-                    checked={notifications.marketing}
-                    onCheckedChange={(checked) => setNotifications({ ...notifications, marketing: checked })}
-                  />
                 </div>
               </CardContent>
             </Card>
@@ -240,38 +468,32 @@ export default function ProfilePage() {
           <div className="space-y-6">
             <div>
               <h2 className="font-serif text-2xl font-bold mb-2">구독 관리</h2>
-              <p className="text-muted-foreground">현재 구독 상태와 사용량을 확인하세요</p>
+              <p className="text-muted-foreground">구독 상태를 확인하고 관리하세요</p>
             </div>
 
             <Card className="border-border/50 shadow-lg shadow-black/5 backdrop-blur-sm bg-card/95">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Crown className="w-5 h-5 text-accent" />
-                  현재 플랜: 프리미엄
-                </CardTitle>
-                <CardDescription>다음 결제일: 2024년 9월 18일</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="p-4 bg-muted/50 rounded-lg">
-                    <p className="text-sm text-muted-foreground">이번 달 단축 링크</p>
-                    <p className="text-2xl font-bold">1,247</p>
-                    <p className="text-xs text-green-600">무제한</p>
+              <CardContent className="pt-6">
+                <div className="text-center space-y-4">
+                  <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto">
+                    <Crown className="w-8 h-8 text-amber-500" />
                   </div>
-                  <div className="p-4 bg-muted/50 rounded-lg">
-                    <p className="text-sm text-muted-foreground">총 클릭 수</p>
-                    <p className="text-2xl font-bold">15,892</p>
-                    <p className="text-xs text-muted-foreground">전체 기간</p>
+                  <div>
+                    <h3 className="text-xl font-semibold">
+                      {profileData.isPremium ? "프리미엄 구독" : "무료 계정"}
+                    </h3>
+                    <p className="text-muted-foreground">
+                      {profileData.isPremium 
+                        ? "모든 프리미엄 기능을 사용할 수 있습니다." 
+                        : "프리미엄으로 업그레이드하여 더 많은 기능을 사용하세요."
+                      }
+                    </p>
                   </div>
-                </div>
-
-                <div className="flex gap-2">
-                  <Button variant="outline" className="flex-1 bg-transparent">
-                    플랜 변경
-                  </Button>
-                  <Button variant="outline" className="flex-1 bg-transparent">
-                    결제 내역
-                  </Button>
+                  
+                  {!profileData.isPremium && (
+                    <Button className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600">
+                      프리미엄으로 업그레이드
+                    </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -283,45 +505,49 @@ export default function ProfilePage() {
           <div className="space-y-6">
             <div>
               <h2 className="font-serif text-2xl font-bold mb-2">API 관리</h2>
-              <p className="text-muted-foreground">개발자 API 키를 관리하세요</p>
+              <p className="text-muted-foreground">API 키를 관리하고 사용하세요</p>
             </div>
 
             <Card className="border-border/50 shadow-lg shadow-black/5 backdrop-blur-sm bg-card/95">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Key className="w-5 h-5" />
-                  API 키
-                </CardTitle>
-                <CardDescription>프리미엄 사용자만 API를 사용할 수 있습니다</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex gap-2">
-                  <Input value={apiKey} readOnly className="font-mono text-sm shadow-inner shadow-black/5" />
-                  <Button variant="outline" size="sm" onClick={handleCopyApiKey}>
-                    <Copy className="w-4 h-4" />
-                  </Button>
-                  <Button variant="outline" size="sm">
-                    <RefreshCw className="w-4 h-4" />
-                  </Button>
-                </div>
-
-                <div className="p-4 bg-muted/50 rounded-lg">
-                  <h4 className="font-medium mb-2">API 사용량 (이번 달)</h4>
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <p className="text-muted-foreground">요청 수</p>
-                      <p className="font-semibold">2,847 / 10,000</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">성공률</p>
-                      <p className="font-semibold text-green-600">99.8%</p>
+              <CardContent className="pt-6">
+                <div className="space-y-4">
+                  <div>
+                    <Label className="text-sm text-muted-foreground">API 키</Label>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Input
+                        value={apiKey}
+                        readOnly
+                        className="font-mono text-sm bg-muted/50"
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={handleCopyApiKey}
+                        className="flex items-center gap-2"
+                      >
+                        <Copy className="w-4 h-4" />
+                        복사
+                      </Button>
                     </div>
                   </div>
+                  
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={handleRegenerateApiKey}
+                      className="flex items-center gap-2"
+                    >
+                      <RefreshCw className="w-4 h-4" />
+                      새로 생성
+                    </Button>
+                  </div>
+                  
+                  <div className="text-sm text-muted-foreground">
+                    <p>• API 키는 안전하게 보관하세요</p>
+                    <p>• 키가 노출되면 즉시 재생성하세요</p>
+                    <p>• API 사용량은 대시보드에서 확인할 수 있습니다</p>
+                  </div>
                 </div>
-
-                <Button variant="outline" className="w-full bg-transparent">
-                  API 문서 보기
-                </Button>
               </CardContent>
             </Card>
           </div>
@@ -331,33 +557,32 @@ export default function ProfilePage() {
         return (
           <div className="space-y-6">
             <div>
-              <h2 className="font-serif text-2xl font-bold mb-2">계정 관리</h2>
-              <p className="text-muted-foreground">계정 삭제 및 데이터 관리</p>
+              <h2 className="font-serif text-2xl font-bold mb-2 text-red-600">계정 관리</h2>
+              <p className="text-muted-foreground">위험한 작업을 수행할 수 있습니다</p>
             </div>
 
-            <Card className="border-destructive/50 shadow-lg shadow-destructive/10 backdrop-blur-sm bg-card/95">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-destructive">
-                  <Trash2 className="w-5 h-5" />
-                  계정 삭제
-                </CardTitle>
-                <CardDescription>계정을 삭제하면 모든 데이터가 영구적으로 삭제되며 복구할 수 없습니다.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="p-4 bg-destructive/5 border border-destructive/20 rounded-lg">
-                  <h4 className="font-medium text-destructive mb-2">삭제될 데이터:</h4>
-                  <ul className="text-sm text-muted-foreground space-y-1">
-                    <li>• 모든 단축 링크 및 통계</li>
-                    <li>• 프로필 정보 및 설정</li>
-                    <li>• 구독 정보 및 결제 내역</li>
-                    <li>• API 키 및 사용 기록</li>
-                  </ul>
+            <Card className="border-red-200 bg-red-50 dark:bg-red-950/20">
+              <CardContent className="pt-6">
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <Shield className="w-6 h-6 text-red-500" />
+                    <div>
+                      <h3 className="font-semibold text-red-700 dark:text-red-300">계정 삭제</h3>
+                      <p className="text-sm text-red-600 dark:text-red-400">
+                        계정을 삭제하면 모든 데이터가 영구적으로 삭제됩니다.
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <Button
+                    variant="destructive"
+                    onClick={handleDeleteAccount}
+                    className="flex items-center gap-2"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    계정 삭제
+                  </Button>
                 </div>
-
-                <Button variant="destructive" className="w-full shadow-lg shadow-destructive/25">
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  계정 삭제하기
-                </Button>
               </CardContent>
             </Card>
           </div>
@@ -369,49 +594,58 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-primary/5 to-background relative overflow-hidden">
-      {/* Background Elements */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-40 left-32 w-36 h-36 bg-primary/10 rounded-full blur-2xl opacity-60" />
-        <div className="absolute top-80 right-40 w-28 h-28 bg-accent/10 rounded-full blur-xl opacity-60" />
-        <div className="absolute bottom-32 left-1/4 w-44 h-44 bg-secondary/10 rounded-full blur-3xl opacity-60" />
-      </div>
+    <div className="min-h-screen bg-gradient-to-br from-background via-card to-background">
+      <div className="container mx-auto px-4 py-8">
+        {/* 헤더 */}
+        <div className="mb-8">
+          <h1 className="font-serif font-bold text-3xl text-foreground mb-2">프로필 설정</h1>
+          <p className="text-muted-foreground">
+            계정 정보와 설정을 관리하세요
+          </p>
+        </div>
 
-      <div className="container mx-auto px-4 py-8 relative z-10">
-        <div className="max-w-6xl mx-auto">
-          <div className="grid lg:grid-cols-4 gap-8">
-            {/* Sidebar Navigation */}
-            <div className="lg:col-span-1">
-              <Card className="border-border/50 shadow-lg shadow-black/5 backdrop-blur-sm bg-card/95 sticky top-8">
-                <CardHeader>
-                  <CardTitle className="font-serif text-lg">프로필 설정</CardTitle>
-                </CardHeader>
-                <CardContent className="p-0">
-                  <nav className="space-y-1">
-                    {profileSections.map((section) => {
-                      const Icon = section.icon
-                      return (
-                        <button
-                          key={section.id}
-                          onClick={() => setActiveSection(section.id)}
-                          className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-all duration-200 will-change-transform hover:scale-[1.02] ${
-                            activeSection === section.id
-                              ? "bg-primary/10 text-primary border-r-2 border-primary shadow-lg shadow-primary/10"
-                              : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-                          }`}
-                        >
-                          <Icon className="w-4 h-4" />
-                          <span className="font-medium">{section.label}</span>
-                        </button>
-                      )
-                    })}
-                  </nav>
-                </CardContent>
-              </Card>
-            </div>
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          {/* 사이드바 */}
+          <div className="lg:col-span-1">
+            <Card className="border-border/50 shadow-lg shadow-black/5 backdrop-blur-sm bg-card/95">
+              <CardContent className="p-4">
+                <nav className="space-y-2">
+                  {profileSections.map((section) => (
+                    <button
+                      key={section.id}
+                      onClick={() => setActiveSection(section.id)}
+                      className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors ${
+                        activeSection === section.id
+                          ? "bg-primary text-primary-foreground"
+                          : "hover:bg-muted"
+                      }`}
+                    >
+                      <section.icon className="w-4 h-4" />
+                      {section.label}
+                    </button>
+                  ))}
+                </nav>
+              </CardContent>
+            </Card>
+          </div>
 
-            {/* Main Content */}
-            <div className="lg:col-span-3">{renderContent()}</div>
+          {/* 메인 콘텐츠 */}
+          <div className="lg:col-span-3">
+            {renderContent()}
+            
+            {/* 저장 버튼 */}
+            {activeSection === "general" || activeSection === "security" ? (
+              <div className="mt-6">
+                <Button
+                  onClick={handleSave}
+                  disabled={isSaving}
+                  className="flex items-center gap-2"
+                >
+                  <Save className="w-4 h-4" />
+                  {isSaving ? "저장 중..." : "변경사항 저장"}
+                </Button>
+              </div>
+            ) : null}
           </div>
         </div>
       </div>

@@ -1,354 +1,576 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts"
-import {
-  Link,
-  BarChart3,
-  TrendingUp,
-  Users,
-  Globe,
-  Copy,
-  ExternalLink,
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { 
+  Search, 
+  Filter, 
+  Plus, 
+  ExternalLink, 
+  Copy, 
+  Edit, 
+  Trash2, 
+  Heart, 
+  Crown,
   Calendar,
-  Heart,
+  BarChart3,
   Tag,
-  Plus,
-  Search,
-  Filter,
+  Eye,
+  Globe
 } from "lucide-react"
+import { useAuth } from "@/contexts/auth-context"
+import { useLanguage } from "@/contexts/language-context"
 import { useToast } from "@/hooks/use-toast"
+import { useRouter } from "next/navigation"
+import Link from "next/link"
+import { GeoChart } from "@/components/ui/geo-chart"
 
-const statsData = [
-  { name: "월", clicks: 2400 },
-  { name: "화", clicks: 1398 },
-  { name: "수", clicks: 9800 },
-  { name: "목", clicks: 3908 },
-  { name: "금", clicks: 4800 },
-  { name: "토", clicks: 3800 },
-  { name: "일", clicks: 4300 },
-]
+interface UrlData {
+  id: string
+  originalUrl: string
+  shortUrl: string
+  shortCode: string
+  customCode: string | null
+  title: string | null
+  description: string | null
+  isFavorite: boolean
+  isPremiumFavorite: boolean
+  expiresAt: string | null
+  createdAt: string
+  clickCount: number
+  tags: Array<{
+    id: string
+    name: string
+    color: string
+  }>
+}
 
-const deviceData = [
-  { name: "데스크톱", value: 45, color: "#dc2626" },
-  { name: "모바일", value: 35, color: "#f59e0b" },
-  { name: "태블릿", value: 20, color: "#15803d" },
-]
-
-const recentLinks = [
-  {
-    id: 1,
-    original: "https://example.com/very-long-url-that-needs-shortening",
-    short: "cutlet.ly/abc123",
-    clicks: 247,
-    created: "2024-08-15",
-    tags: ["업무", "마케팅"],
-    favorite: true,
-  },
-  {
-    id: 2,
-    original: "https://github.com/user/awesome-project",
-    short: "cutlet.ly/github-proj",
-    clicks: 89,
-    created: "2024-08-14",
-    tags: ["개발"],
-    favorite: false,
-  },
-  {
-    id: 3,
-    original: "https://docs.google.com/presentation/d/1234567890",
-    short: "cutlet.ly/xyz789",
-    clicks: 156,
-    created: "2024-08-13",
-    tags: ["프레젠테이션", "업무"],
-    favorite: true,
-  },
-]
+interface PaginationData {
+  page: number
+  limit: number
+  totalCount: number
+  totalPages: number
+  hasNext: boolean
+  hasPrev: boolean
+}
 
 export default function DashboardPage() {
-  const [searchTerm, setSearchTerm] = useState("")
+  const { user, isLoading: authLoading } = useAuth()
+  const { t } = useLanguage()
   const { toast } = useToast()
+  const router = useRouter()
+  
+  const [urls, setUrls] = useState<UrlData[]>([])
+  const [pagination, setPagination] = useState<PaginationData | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [searchTerm, setSearchTerm] = useState("")
+  const [selectedTag, setSelectedTag] = useState("")
+  const [showFavorites, setShowFavorites] = useState(false)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [activeTab, setActiveTab] = useState<'urls' | 'analytics' | 'geo'>('urls')
+  const [geoData, setGeoData] = useState<any>(null)
+  const [isLoadingGeo, setIsLoadingGeo] = useState(false)
 
-  const handleCopyLink = (link: string) => {
-    navigator.clipboard.writeText(link)
-    toast({
-      title: "복사 완료",
-      description: "링크가 클립보드에 복사되었습니다.",
-    })
+  // 인증 확인
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push('/auth/login')
+    }
+  }, [user, authLoading, router])
+
+  // URL 목록 로드
+  const loadUrls = async (page = 1) => {
+    if (!user) return
+
+    setIsLoading(true)
+    try {
+      const params = new URLSearchParams({
+        page: page.toString(),
+        limit: '10'
+      })
+
+      if (searchTerm) params.append('search', searchTerm)
+      if (selectedTag) params.append('tag', selectedTag)
+      if (showFavorites) params.append('favorite', 'true')
+
+      const response = await fetch(`/api/urls?${params}`, {
+        credentials: 'include'
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        setUrls(result.data.urls)
+        setPagination(result.data.pagination)
+        setCurrentPage(page)
+      } else {
+        toast({
+          title: "오류 발생",
+          description: "URL 목록을 불러오는데 실패했습니다.",
+          variant: "destructive"
+        })
+      }
+    } catch (error) {
+      console.error('URL 목록 로드 오류:', error)
+      toast({
+        title: "오류 발생",
+        description: "네트워크 오류가 발생했습니다.",
+        variant: "destructive"
+      })
+    } finally {
+      setIsLoading(false)
+    }
   }
 
-  const filteredLinks = recentLinks.filter(
-    (link) =>
-      link.original.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      link.short.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      link.tags.some((tag) => tag.toLowerCase().includes(searchTerm.toLowerCase())),
-  )
+  // URL 삭제
+  const handleDeleteUrl = async (urlId: string) => {
+    if (!confirm('정말로 이 URL을 삭제하시겠습니까?')) return
+
+    try {
+      const response = await fetch(`/api/urls/${urlId}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      })
+
+      if (response.ok) {
+        toast({
+          title: "삭제 완료",
+          description: "URL이 성공적으로 삭제되었습니다."
+        })
+        loadUrls(currentPage)
+      } else {
+        toast({
+          title: "삭제 실패",
+          description: "URL 삭제에 실패했습니다.",
+          variant: "destructive"
+        })
+      }
+    } catch (error) {
+      console.error('URL 삭제 오류:', error)
+      toast({
+        title: "오류 발생",
+        description: "네트워크 오류가 발생했습니다.",
+        variant: "destructive"
+      })
+    }
+  }
+
+  // URL 복사
+  const handleCopyUrl = async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url)
+      toast({
+        title: "복사 완료",
+        description: "URL이 클립보드에 복사되었습니다."
+      })
+    } catch (error) {
+      toast({
+        title: "복사 실패",
+        description: "URL 복사에 실패했습니다.",
+        variant: "destructive"
+      })
+    }
+  }
+
+  // 검색 및 필터 적용
+  useEffect(() => {
+    if (user) {
+      loadUrls(1)
+    }
+  }, [user, searchTerm, selectedTag, showFavorites])
+
+  // 지리적 데이터 로드
+  const loadGeoData = async () => {
+    if (!user) return
+
+    setIsLoadingGeo(true)
+    try {
+      const response = await fetch('/api/analytics/geo', {
+        credentials: 'include'
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        setGeoData(result.data)
+      }
+    } catch (error) {
+      console.error('지리적 데이터 로드 오류:', error)
+    } finally {
+      setIsLoadingGeo(false)
+    }
+  }
+
+  // 탭 변경 시 데이터 로드
+  useEffect(() => {
+    if (user && activeTab === 'geo' && !geoData) {
+      loadGeoData()
+    }
+  }, [user, activeTab, geoData])
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  if (!user) {
+    return null
+  }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-secondary/5 to-background relative overflow-hidden">
-      {/* Background Elements */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-32 left-24 w-40 h-40 bg-secondary/10 rounded-full blur-2xl opacity-60" />
-        <div className="absolute top-64 right-32 w-32 h-32 bg-primary/10 rounded-full blur-xl opacity-60" />
-        <div className="absolute bottom-40 left-1/3 w-48 h-48 bg-accent/10 rounded-full blur-3xl opacity-60" />
-      </div>
-
-      <div className="container mx-auto px-4 py-8 relative z-10">
-        <div className="max-w-7xl mx-auto space-y-8">
-          {/* Header */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="min-h-screen bg-gradient-to-br from-background via-card to-background">
+      <div className="container mx-auto px-4 py-8">
+        {/* 헤더 */}
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-4">
             <div>
-              <h1 className="font-serif font-bold text-3xl text-foreground">대시보드</h1>
-              <p className="text-muted-foreground">링크 활동과 통계를 한눈에 확인하세요</p>
+              <h1 className="font-serif font-bold text-3xl text-foreground">
+                {t("dashboard")}
+              </h1>
+              <p className="text-muted-foreground">
+                안녕하세요, {user.username || user.email}님!
+              </p>
             </div>
-            <Button className="shadow-lg shadow-primary/25 will-change-transform hover:scale-105">
-              <Plus className="w-4 h-4 mr-2" />새 링크 만들기
-            </Button>
+            <Link href="/shortener">
+              <Button className="flex items-center gap-2">
+                <Plus className="w-4 h-4" />
+                새 URL 만들기
+              </Button>
+            </Link>
           </div>
 
-          {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <Card className="border-border/50 shadow-lg shadow-black/5 backdrop-blur-sm bg-card/95 will-change-transform hover:scale-105 transition-all duration-300 hover:shadow-2xl hover:shadow-primary/10 group">
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
+          {/* 통계 카드 */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2">
+                  <BarChart3 className="w-5 h-5 text-blue-500" />
                   <div>
-                    <p className="text-sm text-muted-foreground">총 링크 수</p>
-                    <p className="text-3xl font-bold text-foreground">1,247</p>
-                    <p className="text-xs text-green-600 flex items-center gap-1 mt-1">
-                      <TrendingUp className="w-3 h-3" />
-                      +12% 이번 달
-                    </p>
-                  </div>
-                  <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center shadow-lg shadow-primary/20 group-hover:shadow-xl group-hover:shadow-primary/30 will-change-transform group-hover:scale-110 transition-all duration-300">
-                    <Link className="w-6 h-6 text-primary" />
+                    <p className="text-sm text-muted-foreground">총 URL</p>
+                    <p className="text-2xl font-bold">{pagination?.totalCount || 0}</p>
                   </div>
                 </div>
               </CardContent>
             </Card>
-
-            <Card className="border-border/50 shadow-lg shadow-black/5 backdrop-blur-sm bg-card/95 will-change-transform hover:scale-105 transition-all duration-300 hover:shadow-2xl hover:shadow-accent/10 group">
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2">
+                  <Eye className="w-5 h-5 text-green-500" />
                   <div>
-                    <p className="text-sm text-muted-foreground">총 클릭 수</p>
-                    <p className="text-3xl font-bold text-foreground">15,892</p>
-                    <p className="text-xs text-green-600 flex items-center gap-1 mt-1">
-                      <TrendingUp className="w-3 h-3" />
-                      +8% 이번 달
+                    <p className="text-sm text-muted-foreground">총 클릭</p>
+                    <p className="text-2xl font-bold">
+                      {urls.reduce((sum, url) => sum + url.clickCount, 0)}
                     </p>
-                  </div>
-                  <div className="w-12 h-12 bg-accent/10 rounded-lg flex items-center justify-center shadow-lg shadow-accent/20 group-hover:shadow-xl group-hover:shadow-accent/30 will-change-transform group-hover:scale-110 transition-all duration-300">
-                    <BarChart3 className="w-6 h-6 text-accent" />
                   </div>
                 </div>
               </CardContent>
             </Card>
-
-            <Card className="border-border/50 shadow-lg shadow-black/5 backdrop-blur-sm bg-card/95 will-change-transform hover:scale-105 transition-all duration-300 hover:shadow-2xl hover:shadow-secondary/10 group">
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2">
+                  <Heart className="w-5 h-5 text-pink-500" />
                   <div>
-                    <p className="text-sm text-muted-foreground">이번 달 방문자</p>
-                    <p className="text-3xl font-bold text-foreground">3,421</p>
-                    <p className="text-xs text-green-600 flex items-center gap-1 mt-1">
-                      <TrendingUp className="w-3 h-3" />
-                      +15% 이번 달
+                    <p className="text-sm text-muted-foreground">즐겨찾기</p>
+                    <p className="text-2xl font-bold">
+                      {urls.filter(url => url.isFavorite).length}
                     </p>
-                  </div>
-                  <div className="w-12 h-12 bg-secondary/10 rounded-lg flex items-center justify-center shadow-lg shadow-secondary/20 group-hover:shadow-xl group-hover:shadow-secondary/30 will-change-transform group-hover:scale-110 transition-all duration-300">
-                    <Users className="w-6 h-6 text-secondary" />
                   </div>
                 </div>
               </CardContent>
             </Card>
-
-            <Card className="border-border/50 shadow-lg shadow-black/5 backdrop-blur-sm bg-card/95 will-change-transform hover:scale-105 transition-all duration-300 hover:shadow-2xl hover:shadow-primary/10 group">
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2">
+                  <Crown className="w-5 h-5 text-amber-500" />
                   <div>
-                    <p className="text-sm text-muted-foreground">평균 CTR</p>
-                    <p className="text-3xl font-bold text-foreground">12.7%</p>
-                    <p className="text-xs text-green-600 flex items-center gap-1 mt-1">
-                      <TrendingUp className="w-3 h-3" />
-                      +2.1% 이번 달
+                    <p className="text-sm text-muted-foreground">프리미엄</p>
+                    <p className="text-2xl font-bold">
+                      {user.isPremium ? "활성" : "비활성"}
                     </p>
-                  </div>
-                  <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center shadow-lg shadow-primary/20 group-hover:shadow-xl group-hover:shadow-primary/30 will-change-transform group-hover:scale-110 transition-all duration-300">
-                    <Globe className="w-6 h-6 text-primary" />
                   </div>
                 </div>
               </CardContent>
             </Card>
           </div>
+        </div>
 
-          {/* Charts Section */}
-          <div className="grid lg:grid-cols-3 gap-6">
-            <Card className="lg:col-span-2 border-border/50 shadow-lg shadow-black/5 backdrop-blur-sm bg-card/95">
-              <CardHeader>
-                <CardTitle className="font-serif">주간 클릭 통계</CardTitle>
-                <CardDescription>최근 7일간의 클릭 추이</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={statsData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                    <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" />
-                    <YAxis stroke="hsl(var(--muted-foreground))" />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: "hsl(var(--card))",
-                        border: "1px solid hsl(var(--border))",
-                        borderRadius: "8px",
-                      }}
-                    />
-                    <Bar dataKey="clicks" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
+        {/* 탭 네비게이션 */}
+        <div className="flex gap-2 mb-6">
+          <Button
+            variant={activeTab === 'urls' ? 'default' : 'outline'}
+            onClick={() => setActiveTab('urls')}
+            className="flex items-center gap-2"
+          >
+            <BarChart3 className="w-4 h-4" />
+            URL 목록
+          </Button>
+          <Button
+            variant={activeTab === 'analytics' ? 'default' : 'outline'}
+            onClick={() => setActiveTab('analytics')}
+            className="flex items-center gap-2"
+          >
+            <BarChart3 className="w-4 h-4" />
+            기본 통계
+          </Button>
+          <Button
+            variant={activeTab === 'geo' ? 'default' : 'outline'}
+            onClick={() => setActiveTab('geo')}
+            className="flex items-center gap-2"
+          >
+            {/* 아이콘 간단화: Globe 대신 기본 아이콘 사용 */}
+            <BarChart3 className="w-4 h-4" />
+            지리적 분석
+          </Button>
+        </div>
 
-            <Card className="border-border/50 shadow-lg shadow-black/5 backdrop-blur-sm bg-card/95">
-              <CardHeader>
-                <CardTitle className="font-serif">디바이스별 접속</CardTitle>
-                <CardDescription>사용자 디바이스 분포</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <PieChart>
-                    <Pie
-                      data={deviceData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={60}
-                      outerRadius={100}
-                      paddingAngle={5}
-                      dataKey="value"
-                    >
-                      {deviceData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-                <div className="mt-4 space-y-2">
-                  {deviceData.map((item, index) => (
-                    <div key={index} className="flex items-center justify-between text-sm">
-                      <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} />
-                        <span>{item.name}</span>
-                      </div>
-                      <span className="font-medium">{item.value}%</span>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Recent Links */}
-          <Card className="border-border/50 shadow-lg shadow-black/5 backdrop-blur-sm bg-card/95">
-            <CardHeader>
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                  <CardTitle className="font-serif">최근 생성한 링크</CardTitle>
-                  <CardDescription>최근에 만든 단축 링크들을 관리하세요</CardDescription>
-                </div>
-                <div className="flex gap-2">
+        {/* 검색 및 필터 (URL 목록 탭에서만 표시) */}
+        {activeTab === 'urls' && (
+          <Card className="mb-6">
+            <CardContent className="p-4">
+              <div className="flex flex-col md:flex-row gap-4">
+                <div className="flex-1">
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input
-                      placeholder="링크 검색..."
+                      placeholder="URL 검색..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pl-10 w-64 shadow-inner shadow-black/5"
+                      className="pl-10"
                     />
                   </div>
-                  <Button variant="outline" size="sm" className="bg-transparent">
-                    <Filter className="w-4 h-4" />
+                </div>
+                <div className="flex gap-2">
+                  <Select value={selectedTag || undefined} onValueChange={(v) => setSelectedTag(v === 'all' ? '' : v)}>
+                    <SelectTrigger className="w-40">
+                      <SelectValue placeholder="태그 선택" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">모든 태그</SelectItem>
+                      {Array.from(new Set(urls.flatMap(url => url.tags.map(tag => tag.name)))).map(tagName => (
+                        <SelectItem key={tagName} value={tagName}>{tagName}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    variant={showFavorites ? "default" : "outline"}
+                    onClick={() => setShowFavorites(!showFavorites)}
+                    className="flex items-center gap-2"
+                  >
+                    <Heart className={`w-4 h-4 ${showFavorites ? "fill-current" : ""}`} />
+                    즐겨찾기
                   </Button>
                 </div>
               </div>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>원본 URL</TableHead>
-                    <TableHead>단축 URL</TableHead>
-                    <TableHead>클릭 수</TableHead>
-                    <TableHead>생성일</TableHead>
-                    <TableHead>태그</TableHead>
-                    <TableHead className="text-right">작업</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredLinks.map((link) => (
-                    <TableRow key={link.id} className="hover:bg-muted/50 transition-colors">
-                      <TableCell className="max-w-xs">
-                        <div className="flex items-center gap-2">
-                          {link.favorite && <Heart className="w-4 h-4 text-pink-500 fill-current" />}
-                          <span className="truncate" title={link.original}>
-                            {link.original}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <code className="text-sm bg-muted px-2 py-1 rounded">{link.short}</code>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="secondary" className="bg-accent/10 text-accent border-accent/20">
-                          {link.clicks.toLocaleString()}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                          <Calendar className="w-3 h-3" />
-                          {link.created}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-1 flex-wrap">
-                          {link.tags.map((tag, index) => (
-                            <Badge key={index} variant="outline" className="text-xs">
-                              <Tag className="w-2 h-2 mr-1" />
-                              {tag}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* 탭별 콘텐츠 */}
+        {activeTab === 'urls' && (
+          <div className="space-y-4">
+            {/* 기존 URL 목록 코드는 그대로 유지 */}
+            {/* ... */}
+          </div>
+        )}
+
+        {activeTab === 'analytics' && (
+          <Card>
+            <CardContent className="p-8 text-center">
+              <BarChart3 className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+              <h3 className="text-lg font-semibold mb-2">기본 통계</h3>
+              <p className="text-muted-foreground">
+                기본 통계 기능은 곧 추가될 예정입니다.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {activeTab === 'geo' && (
+          <div>
+            {isLoadingGeo ? (
+              <div className="text-center py-8">
+                <div className="w-8 h-8 border-4 border-primary border-t-primary/30 rounded-full animate-spin mx-auto mb-4" />
+                <p className="text-muted-foreground">지리적 데이터를 불러오는 중...</p>
+              </div>
+            ) : geoData ? (
+              <GeoChart 
+                countryStats={geoData.countryStats}
+                cityStats={geoData.cityStats}
+                summary={geoData.summary}
+              />
+            ) : (
+              <Card>
+                <CardContent className="p-8 text-center">
+                  <div className="text-4xl mx-auto mb-4">🌐</div>
+                  <h3 className="text-lg font-semibold mb-2">지리적 데이터가 없습니다</h3>
+                  <p className="text-muted-foreground">
+                    URL을 공유하고 클릭이 발생하면 지리적 분석을 확인할 수 있습니다.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        )}
+
+        {/* URL 목록 */}
+        <div className="space-y-4">
+          {isLoading ? (
+            <div className="text-center py-8">
+              <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+              <p className="text-muted-foreground">URL 목록을 불러오는 중...</p>
+            </div>
+          ) : urls.length === 0 ? (
+            <Card>
+              <CardContent className="p-8 text-center">
+                <BarChart3 className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+                <h3 className="text-lg font-semibold mb-2">아직 URL이 없습니다</h3>
+                <p className="text-muted-foreground mb-4">
+                  첫 번째 URL을 만들어보세요!
+                </p>
+                <Link href="/shortener">
+                  <Button>URL 만들기</Button>
+                </Link>
+              </CardContent>
+            </Card>
+          ) : (
+            urls.map((url) => (
+              <Card key={url.id} className="hover:shadow-lg transition-shadow">
+                <CardContent className="p-4">
+                  <div className="flex flex-col lg:flex-row lg:items-center gap-4">
+                    {/* URL 정보 */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start gap-2 mb-2">
+                        {url.isFavorite && (
+                          <Heart className="w-4 h-4 text-pink-500 fill-current" />
+                        )}
+                        {url.isPremiumFavorite && (
+                          <Crown className="w-4 h-4 text-amber-500" />
+                        )}
+                        <h3 className="font-semibold truncate">
+                          {url.title || url.originalUrl.substring(0, 50) + '...'}
+                        </h3>
+                      </div>
+                      
+                      <div className="space-y-1">
+                        <p className="text-sm text-muted-foreground truncate">
+                          {url.originalUrl}
+                        </p>
+                        <p className="font-mono text-sm text-primary">
+                          {url.shortUrl}
+                        </p>
+                        {url.description && (
+                          <p className="text-sm text-muted-foreground">
+                            {url.description}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* 태그 */}
+                      {url.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {url.tags.map((tag) => (
+                            <Badge key={tag.id} variant="secondary" className="text-xs">
+                              <Tag className="w-3 h-3 mr-1" />
+                              {tag.name}
                             </Badge>
                           ))}
                         </div>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex gap-1 justify-end">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleCopyLink(link.short)}
-                            className="will-change-transform hover:scale-110"
-                          >
-                            <Copy className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="will-change-transform hover:scale-110"
-                            onClick={() => window.open(link.original, "_blank")}
-                          >
-                            <ExternalLink className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+                      )}
+
+                      {/* 메타 정보 */}
+                      <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1">
+                          <Eye className="w-3 h-3" />
+                          {url.clickCount} 클릭
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Calendar className="w-3 h-3" />
+                          {new Date(url.createdAt).toLocaleDateString()}
+                        </span>
+                        {url.expiresAt && (
+                          <span className="flex items-center gap-1 text-orange-500">
+                            <Calendar className="w-3 h-3" />
+                            {new Date(url.expiresAt).toLocaleDateString()} 만료
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 액션 버튼 */}
+                    <div className="flex flex-col sm:flex-row gap-2 lg:flex-col">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleCopyUrl(url.shortUrl)}
+                        className="flex items-center gap-1"
+                      >
+                        <Copy className="w-3 h-3" />
+                        복사
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => window.open(url.shortUrl, '_blank')}
+                        className="flex items-center gap-1"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        열기
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => router.push(`/dashboard/edit/${url.id}`)}
+                        className="flex items-center gap-1"
+                      >
+                        <Edit className="w-3 h-3" />
+                        편집
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDeleteUrl(url.id)}
+                        className="flex items-center gap-1 text-red-500 hover:text-red-600"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        삭제
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))
+          )}
         </div>
+
+        {/* 페이지네이션 */}
+        {pagination && pagination.totalPages > 1 && (
+          <div className="flex items-center justify-center gap-2 mt-8">
+            <Button
+              variant="outline"
+              onClick={() => loadUrls(currentPage - 1)}
+              disabled={!pagination.hasPrev}
+            >
+              이전
+            </Button>
+            
+            <span className="text-sm text-muted-foreground">
+              {pagination.page} / {pagination.totalPages}
+            </span>
+            
+            <Button
+              variant="outline"
+              onClick={() => loadUrls(currentPage + 1)}
+              disabled={!pagination.hasNext}
+            >
+              다음
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   )

@@ -3,7 +3,8 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Scissors, Home, CreditCard, User, BarChart3, Settings, LinkIcon, LogIn, LogOut, Menu, X } from "lucide-react"
+import { Scissors, Home, CreditCard, User, BarChart3, Settings, LinkIcon, LogIn, LogOut, Menu, X, Activity, Database, Users } from "lucide-react"
+import { NotificationBell } from "@/components/ui/notification-bell"
 import { cn } from "@/lib/utils"
 import { useLanguage } from "@/contexts/language-context"
 import { LanguageSelector } from "@/components/language-selector"
@@ -46,13 +47,35 @@ const protectedNavigationItems = [
   },
 ]
 
+const adminNavigationItems = [
+  {
+    nameKey: "monitoring" as const,
+    href: "/admin/monitoring",
+    icon: Activity,
+  },
+  {
+    nameKey: "users" as const,
+    href: "/admin/users",
+    icon: Users,
+  },
+  {
+    nameKey: "backup" as const,
+    href: "/admin/backup",
+    icon: Database,
+  },
+]
+
 export function Navigation() {
   const pathname = usePathname()
   const { t } = useLanguage()
   const { user, logout } = useAuth()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
 
-  const navigationItems = user ? [...publicNavigationItems, ...protectedNavigationItems] : publicNavigationItems
+  const navigationItems = user ? [
+    ...publicNavigationItems, 
+    ...protectedNavigationItems,
+    ...(user.isAdmin ? adminNavigationItems : [])
+  ] : publicNavigationItems
 
   const handleLogout = () => {
     logout()
@@ -98,15 +121,18 @@ export function Navigation() {
             })}
 
             {user ? (
-              <Button
-                onClick={handleLogout}
-                variant="ghost"
-                size="sm"
-                className="flex items-center gap-2 will-change-transform hover:scale-105 transition-all duration-200"
-              >
-                <LogOut className="w-4 h-4" />
-                Logout
-              </Button>
+              <div className="flex items-center gap-2">
+                <NotificationBell />
+                <Button
+                  onClick={handleLogout}
+                  variant="ghost"
+                  size="sm"
+                  className="flex items-center gap-2 will-change-transform hover:scale-105 transition-all duration-200"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Logout
+                </Button>
+              </div>
             ) : (
               <Link href="/auth/login">
                 <Button

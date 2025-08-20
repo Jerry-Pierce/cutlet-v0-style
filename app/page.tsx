@@ -1,12 +1,90 @@
 "use client"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { ArrowRight, Zap, Shield, BarChart3, Crown, Globe, Scissors } from "lucide-react"
+import { ArrowRight, Zap, Shield, BarChart3, Crown, Scissors, TrendingUp, TrendingDown } from "lucide-react"
 import { useLanguage } from "@/contexts/language-context"
 import Link from "next/link"
 
+interface PublicStats {
+  users: {
+    total: number
+    premium: number
+    premiumPercentage: number
+  }
+  urls: {
+    total: number
+    active: number
+    today: number
+    thisWeek: number
+    growthRate: number
+  }
+  clicks: {
+    total: number
+    today: number
+    thisWeek: number
+    growthRate: number
+  }
+  engagement: {
+    averageClicksPerUrl: number
+    activeUrlPercentage: number
+  }
+  trends: {
+    popularTags: Array<{ name: string; count: number }>
+    topCountries: Array<{ country: string; clicks: number }>
+  }
+  system: {
+    uptime: number
+    timestamp: string
+  }
+}
+
 export default function LandingPage() {
   const { t } = useLanguage()
+  const [stats, setStats] = useState<PublicStats | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+
+  // 통계 데이터 로드
+  useEffect(() => {
+    const loadStats = async () => {
+      try {
+        const response = await fetch('/api/public/stats')
+        if (response.ok) {
+          const result = await response.json()
+          setStats(result.data)
+        }
+      } catch (error) {
+        console.error('통계 데이터 로드 오류:', error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadStats()
+  }, [])
+
+  // 성장률 표시
+  const renderGrowthRate = (rate: number) => {
+    if (rate === 0) return null
+    
+    const isPositive = rate > 0
+    const Icon = isPositive ? TrendingUp : TrendingDown
+    const color = isPositive ? 'text-green-500' : 'text-red-500'
+    
+    return (
+      <div className={`flex items-center gap-1 ${color} text-sm`}>
+        <Icon className="w-4 h-4" />
+        <span>{Math.abs(rate).toFixed(1)}%</span>
+      </div>
+    )
+  }
+
+  // 숫자 포맷팅
+  const formatNumber = (num: number): string => {
+    if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M+'
+    if (num >= 1000) return (num / 1000).toFixed(1) + 'K+'
+    return num.toString()
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-card to-background relative overflow-hidden">
@@ -115,7 +193,7 @@ export default function LandingPage() {
             <Card className="border-border/50 shadow-xl shadow-black/5 backdrop-blur-sm bg-card/95 will-change-transform hover:scale-105 transition-all duration-300 hover:shadow-2xl hover:shadow-blue-500/10 group">
               <CardContent className="pt-8">
                 <div className="w-16 h-16 bg-blue-500/10 rounded-xl flex items-center justify-center mb-6 shadow-lg shadow-blue-500/20 group-hover:shadow-xl group-hover:shadow-blue-500/30 will-change-transform group-hover:scale-110 transition-all duration-300">
-                  <Globe className="w-8 h-8 text-blue-500" />
+                  <span className="text-blue-500 text-2xl">🌐</span>
                 </div>
                 <h3 className="font-serif font-semibold text-xl mb-3">{t("globalAccess")}</h3>
                 <p className="text-muted-foreground">{t("globalAccessDesc")}</p>
@@ -134,20 +212,38 @@ export default function LandingPage() {
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
                 <div className="text-center">
-                  <div className="text-3xl font-bold text-primary mb-2">10M+</div>
+                  <div className="text-3xl font-bold text-primary mb-2">
+                    {isLoading ? '...' : formatNumber(stats?.urls.total || 0)}
+                  </div>
                   <div className="text-sm text-muted-foreground">{t("linksShortened")}</div>
+                  {stats?.urls.growthRate && renderGrowthRate(stats.urls.growthRate)}
                 </div>
                 <div className="text-center">
-                  <div className="text-3xl font-bold text-accent mb-2">50K+</div>
+                  <div className="text-3xl font-bold text-accent mb-2">
+                    {isLoading ? '...' : formatNumber(stats?.users.total || 0)}
+                  </div>
                   <div className="text-sm text-muted-foreground">{t("activeUsers")}</div>
+                  {stats?.users.premiumPercentage > 0 && (
+                    <div className="text-xs text-muted-foreground">
+                      {stats.users.premiumPercentage.toFixed(1)}% 프리미엄
+                    </div>
+                  )}
                 </div>
                 <div className="text-center">
-                  <div className="text-3xl font-bold text-secondary mb-2">99.9%</div>
-                  <div className="text-sm text-muted-foreground">{t("uptime")}</div>
+                  <div className="text-3xl font-bold text-secondary mb-2">
+                    {isLoading ? '...' : formatNumber(stats?.clicks.total || 0)}
+                  </div>
+                  <div className="text-sm text-muted-foreground">{t("totalClicks")}</div>
+                  {stats?.clicks.growthRate && renderGrowthRate(stats.clicks.growthRate)}
                 </div>
                 <div className="text-center">
-                  <div className="text-3xl font-bold text-green-500 mb-2">24/7</div>
-                  <div className="text-sm text-muted-foreground">{t("support")}</div>
+                  <div className="text-3xl font-bold text-green-500 mb-2">
+                    {isLoading ? '...' : (stats?.engagement.activeUrlPercentage || 0).toFixed(1) + '%'}
+                  </div>
+                  <div className="text-sm text-muted-foreground">{t("activeUrls")}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {stats?.engagement.averageClicksPerUrl.toFixed(1) || 0} 클릭/URL
+                  </div>
                 </div>
               </div>
             </CardContent>

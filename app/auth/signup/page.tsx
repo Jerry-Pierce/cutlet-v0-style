@@ -20,6 +20,7 @@ export default function SignupPage() {
   const router = useRouter()
   const { toast } = useToast()
   const [email, setEmail] = useState("")
+  const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
 
@@ -34,7 +35,7 @@ export default function SignupPage() {
       return
     }
 
-    const success = await signup(email, password)
+    const success = await signup(email, password, username)
 
     if (success) {
       toast({
@@ -80,6 +81,22 @@ export default function SignupPage() {
             </CardHeader>
             <CardContent className="space-y-4 relative z-10">
               <form onSubmit={handleSignup} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="username" className="text-sm font-medium">
+                    {t("username")}
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      id="username"
+                      type="text"
+                      placeholder="사용자명을 입력하세요"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      className="shadow-inner shadow-black/5 border-border/50 focus:shadow-lg focus:shadow-primary/10 transition-all duration-300"
+                    />
+                  </div>
+                </div>
+
                 <div className="space-y-2">
                   <Label htmlFor="email" className="text-sm font-medium">
                     {t("email")}

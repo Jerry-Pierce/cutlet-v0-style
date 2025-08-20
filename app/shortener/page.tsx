@@ -6,12 +6,17 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Copy, Link, Crown, Clock, Tag, Heart, X } from "lucide-react"
+import { Copy, Link as LinkIcon, Crown, Clock, Tag, Heart, X } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useLanguage } from "@/contexts/language-context"
+import { useAuth } from "@/contexts/auth-context"
+import Link from "next/link"
+import { QRCode } from "@/components/ui/qr-code"
+import { RateLimitInfo } from "@/components/ui/rate-limit-info"
 
 export default function ShortenerPage() {
   const { t } = useLanguage()
+  const { user } = useAuth()
   const [url, setUrl] = useState("")
   const [shortUrl, setShortUrl] = useState("")
   const [customUrl, setCustomUrl] = useState("")
@@ -21,6 +26,11 @@ export default function ShortenerPage() {
   const [isFavorite, setIsFavorite] = useState(false)
   const [isPremiumFavorite, setIsPremiumFavorite] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [rateLimitInfo, setRateLimitInfo] = useState<{
+    limit: number
+    remaining: number
+    reset: number
+  } | null>(null)
   const { toast } = useToast()
 
   const handleAddTag = () => {
@@ -45,15 +55,83 @@ export default function ShortenerPage() {
     if (!url) return
 
     setIsLoading(true)
-    setTimeout(() => {
-      const finalUrl = customUrl ? `cutlet.ly/${customUrl}` : `cutlet.ly/${Math.random().toString(36).substr(2, 8)}`
-      setShortUrl(finalUrl)
-      setIsLoading(false)
-      toast({
-        title: t("urlShorteningComplete"),
-        description: t("newShortLinkCreated"),
+    
+    try {
+      const response = await fetch('/api/shorten', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          originalUrl: url,
+          customCode: customUrl || undefined,
+          tags: tags,
+          expirationDays: expirationDays,
+          isFavorite: isFavorite,
+          isPremiumFavorite: isPremiumFavorite,
+        }),
       })
-    }, 1000)
+
+      const result = await response.json()
+
+      if (response.ok) {
+        setShortUrl(result.data.shortUrl)
+        
+        // Rate Limit 정보 저장
+        const limit = response.headers.get('X-RateLimit-Limit')
+        const remaining = response.headers.get('X-RateLimit-Remaining')
+        const reset = response.headers.get('X-RateLimit-Reset')
+        
+        if (limit && remaining && reset) {
+          setRateLimitInfo({
+            limit: parseInt(limit),
+            remaining: parseInt(remaining),
+            reset: parseInt(reset)
+          })
+        }
+        
+        toast({
+          title: t("urlShorteningComplete"),
+          description: t("newShortLinkCreated"),
+        })
+      } else {
+        // Rate Limit 오류 처리
+        if (response.status === 429) {
+          const retryAfter = response.headers.get('Retry-After')
+          const limit = response.headers.get('X-RateLimit-Limit')
+          const reset = response.headers.get('X-RateLimit-Reset')
+          
+          toast({
+            title: "요청 제한",
+            description: `요청이 너무 많습니다. ${retryAfter ? `${retryAfter}초 후` : '잠시 후'} 다시 시도해주세요.`,
+            variant: "destructive",
+          })
+          
+          if (limit && reset) {
+            setRateLimitInfo({
+              limit: parseInt(limit),
+              remaining: 0,
+              reset: parseInt(reset)
+            })
+          }
+        } else {
+          toast({
+            title: "오류 발생",
+            description: result.error || "URL 단축 중 오류가 발생했습니다.",
+            variant: "destructive",
+          })
+        }
+      }
+    } catch (error) {
+      console.error('URL 단축 오류:', error)
+      toast({
+        title: "오류 발생",
+        description: "네트워크 오류가 발생했습니다.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const handleCopy = async () => {
@@ -84,6 +162,17 @@ export default function ShortenerPage() {
           </div>
 
           <Card className="border-border/50 shadow-2xl shadow-black/10 backdrop-blur-sm bg-card/95 will-change-transform hover:scale-[1.01] transition-all duration-300 hover:shadow-3xl hover:shadow-black/20 relative overflow-hidden">
+            {/* Rate Limit 정보 표시 */}
+            {rateLimitInfo && (
+              <div className="absolute top-4 right-4 z-10">
+                <RateLimitInfo 
+                  limit={rateLimitInfo.limit}
+                  remaining={rateLimitInfo.remaining}
+                  reset={rateLimitInfo.reset}
+                  endpoint="URL 단축"
+                />
+              </div>
+            )}
             <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none" />
             <CardHeader className="relative z-10 pb-4 md:pb-6">
               <CardTitle className="font-serif text-lg md:text-xl">{t("shortenLink")}</CardTitle>
@@ -118,7 +207,7 @@ export default function ShortenerPage() {
                         <div className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
                       ) : (
                         <>
-                          <Link className="w-4 h-4 mr-2" />
+                          <LinkIcon className="w-4 h-4 mr-2" />
                           <span className="hidden sm:inline">{t("shorten")}</span>
                           <span className="sm:hidden">Go</span>
                         </>
@@ -132,44 +221,56 @@ export default function ShortenerPage() {
                 </p>
               </div>
 
-              <div className="border-t border-border/30 pt-4">
-                <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-3">
-                  <div className="flex items-center gap-1.5 px-2 py-1 bg-gradient-to-r from-amber-500/10 to-yellow-500/10 rounded-full border border-r-0 border-border/50">
-                    <Crown className="w-3 h-3 text-amber-500" />
-                    <span className="text-xs font-medium text-amber-600 dark:text-amber-400">{t("premium")}</span>
-                  </div>
-                  <span className="text-sm font-medium text-foreground">{t("customUrl")}</span>
-                </div>
-                <div className="space-y-2">
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <div className="flex-1 flex items-center">
-                      <span className="text-xs sm:text-sm text-muted-foreground bg-muted px-2 sm:px-3 py-2 rounded-l-md border border-r-0 border-border/50 whitespace-nowrap">
-                        cutlet.ly/
-                      </span>
-                      <Input
-                        placeholder={t("customUrlPlaceholder")}
-                        value={customUrl}
-                        onChange={(e) => setCustomUrl(e.target.value)}
-                        className="rounded-l-none shadow-inner shadow-black/5 border-border/50 focus:shadow-lg focus:shadow-amber-500/10 transition-all duration-300"
-                      />
+              {user ? (
+                <div className="border-t border-border/30 pt-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-3">
+                    <div className="flex items-center gap-1.5 px-2 py-1 bg-gradient-to-r from-amber-500/10 to-yellow-500/10 rounded-full border border-r-0 border-border/50">
+                      <Crown className="w-3 h-3 text-amber-500" />
+                      <span className="text-xs font-medium text-amber-600 dark:text-amber-400">{t("premium")}</span>
                     </div>
-                    <button
-                      onClick={() => setIsPremiumFavorite(!isPremiumFavorite)}
-                      className={`p-2 rounded-lg border transition-all duration-300 will-change-transform hover:scale-110 active:scale-95 self-start sm:self-auto ${
-                        isPremiumFavorite
-                          ? "bg-pink-500/10 border-pink-500/30 text-pink-500 shadow-lg shadow-pink-500/20"
-                          : "bg-muted border-border/50 text-muted-foreground hover:bg-pink-500/5 hover:border-pink-500/20"
-                      }`}
-                    >
-                      <Heart className={`w-4 h-4 ${isPremiumFavorite ? "fill-current" : ""}`} />
-                    </button>
+                    <span className="text-sm font-medium text-foreground">{t("customUrl")}</span>
                   </div>
-                  <p className="text-xs text-muted-foreground flex items-center gap-1">
-                    <Crown className="w-3 h-3 text-amber-500" />
-                    {t("premiumOnlyFeature")}
-                  </p>
+                  <div className="space-y-2">
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <div className="flex-1 flex items-center">
+                        <span className="text-xs sm:text-sm text-muted-foreground bg-muted px-2 sm:px-3 py-2 rounded-l-md border border-r-0 border-border/50 whitespace-nowrap">
+                          cutlet.ly/
+                        </span>
+                        <Input
+                          placeholder={t("customUrlPlaceholder")}
+                          value={customUrl}
+                          onChange={(e) => setCustomUrl(e.target.value)}
+                          className="rounded-l-none shadow-inner shadow-black/5 border-border/50 focus:shadow-lg focus:shadow-amber-500/10 transition-all duration-300"
+                        />
+                      </div>
+                      <button
+                        onClick={() => setIsPremiumFavorite(!isPremiumFavorite)}
+                        className={`p-2 rounded-lg border transition-all duration-300 will-change-transform hover:scale-110 active:scale-95 self-start sm:self-auto ${
+                          isPremiumFavorite
+                            ? "bg-pink-500/10 border-pink-500/30 text-pink-500 shadow-lg shadow-pink-500/20"
+                            : "bg-muted border-border/50 text-muted-foreground hover:bg-pink-500/5 hover:border-pink-500/20"
+                        }`}
+                      >
+                        <Heart className={`w-4 h-4 ${isPremiumFavorite ? "fill-current" : ""}`} />
+                      </button>
+                    </div>
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Crown className="w-3 h-3 text-amber-500" />
+                      {t("premiumOnlyFeature")}
+                    </p>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="border-t border-border/30 pt-4">
+                  <div className="text-center p-4 bg-muted/50 rounded-lg border border-border/50">
+                    <Crown className="w-8 h-8 text-amber-500 mx-auto mb-2" />
+                    <p className="text-sm font-medium mb-2">커스텀 URL을 사용하려면 로그인이 필요합니다</p>
+                    <Link href="/auth/login" className="text-primary hover:text-primary/80 text-sm">
+                      로그인하기 →
+                    </Link>
+                  </div>
+                </div>
+              )}
 
               <div className="border-t border-border/30 pt-4">
                 <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-3">
@@ -246,23 +347,35 @@ export default function ShortenerPage() {
               </div>
 
               {shortUrl && (
-                <div className="p-3 md:p-4 bg-muted rounded-lg border border-border/50 shadow-inner shadow-black/5 backdrop-blur-sm animate-in slide-in-from-bottom-4 duration-500">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-muted-foreground mb-1">{t("shortenedUrl")}</p>
-                      <p className="font-mono text-sm md:text-base text-foreground truncate bg-gradient-to-r from-primary/10 to-transparent px-2 py-1 rounded">
-                        {shortUrl}
-                      </p>
+                <div className="space-y-4">
+                  {/* 단축된 URL 표시 */}
+                  <div className="p-3 md:p-4 bg-muted rounded-lg border border-border/50 shadow-inner shadow-black/5 backdrop-blur-sm animate-in slide-in-from-bottom-4 duration-500">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-muted-foreground mb-1">{t("shortenedUrl")}</p>
+                        <p className="font-mono text-sm md:text-base text-foreground truncate bg-gradient-to-r from-primary/10 to-transparent px-2 py-1 rounded">
+                          {shortUrl}
+                        </p>
+                      </div>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={handleCopy}
+                        className="shrink-0 shadow-md hover:shadow-lg will-change-transform hover:scale-105 active:scale-95 transition-all duration-200 w-full sm:w-auto"
+                      >
+                        <Copy className="w-4 h-4 mr-2" />
+                        {t("copy")}
+                      </Button>
                     </div>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={handleCopy}
-                      className="shrink-0 shadow-md hover:shadow-lg will-change-transform hover:scale-105 active:scale-95 transition-all duration-200 w-full sm:w-auto"
-                    >
-                      <Copy className="w-4 h-4 mr-2" />
-                      {t("copy")}
-                    </Button>
+                  </div>
+
+                  {/* QR 코드 */}
+                  <div className="flex justify-center">
+                    <QRCode 
+                      url={shortUrl} 
+                      code={shortUrl.split('/').pop() || ''}
+                      title="스마트폰으로 스캔하여 링크에 접속하세요"
+                    />
                   </div>
                 </div>
               )}

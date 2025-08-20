@@ -2,7 +2,7 @@
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useLanguage } from "@/contexts/language-context"
-import { Globe } from "lucide-react"
+// Globe 아이콘 사용 대신 텍스트로 대체하여 런타임 오류 회피
 
 const languages = [
   { code: "en", name: "English", flag: "🇺🇸" },
@@ -21,7 +21,7 @@ export function LanguageSelector() {
     <Select value={language} onValueChange={setLanguage}>
       <SelectTrigger className="w-[140px] bg-card/50 border-border/50 shadow-md hover:shadow-lg transition-all duration-300">
         <div className="flex items-center gap-2">
-          <Globe className="w-4 h-4 text-muted-foreground" />
+          <span className="text-muted-foreground">🌐</span>
           <SelectValue />
         </div>
       </SelectTrigger>

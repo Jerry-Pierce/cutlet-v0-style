@@ -6,6 +6,9 @@ export const translations = {
     pricing: "Pricing",
     profile: "Profile",
     admin: "Admin",
+    monitoring: "Monitoring",
+    users: "Users",
+    backup: "Backup",
     urlShortenerService: "URL Shortener Service",
 
     // Header
@@ -102,6 +105,8 @@ export const translations = {
     activeUsers: "Active Users",
     uptime: "Uptime",
     support: "Support",
+    totalClicks: "Total Clicks",
+    activeUrls: "Active URLs",
     readyToStart: "Ready to Start?",
     startShorteningToday: "Start shortening your URLs today and experience the difference.",
     learnMore: "Learn More",
@@ -114,6 +119,9 @@ export const translations = {
     pricing: "요금제",
     profile: "프로필",
     admin: "관리자",
+    monitoring: "모니터링",
+    users: "사용자 관리",
+    backup: "백업",
     urlShortenerService: "URL 단축 서비스",
 
     // Header
@@ -210,6 +218,8 @@ export const translations = {
     activeUsers: "활성 사용자",
     uptime: "가동률",
     support: "지원",
+    totalClicks: "총 클릭 수",
+    activeUrls: "활성 URL",
     readyToStart: "시작할 준비가 되셨나요?",
     startShorteningToday: "오늘부터 URL 단축을 시작하고 차이를 경험해보세요.",
     learnMore: "더 알아보기",

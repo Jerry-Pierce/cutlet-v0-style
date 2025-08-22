@@ -185,7 +185,7 @@ export default function ShortenerPage() {
                     placeholder={t("urlPlaceholder")}
                     value={url}
                     onChange={(e) => setUrl(e.target.value)}
-                    className="flex-1 shadow-inner shadow-black/5 border-border/50 focus:shadow-lg focus:shadow-primary/10 transition-all duration-300"
+                    className="flex-1 shadow-inner shadow-black/5 border-border/50 focus:shadow-lg focus:shadow-primary/10 transition-all duration-300 placeholder:text-muted-foreground/60"
                   />
                   <div className="flex gap-2">
                     <button
@@ -240,7 +240,7 @@ export default function ShortenerPage() {
                           placeholder={t("customUrlPlaceholder")}
                           value={customUrl}
                           onChange={(e) => setCustomUrl(e.target.value)}
-                          className="rounded-l-none shadow-inner shadow-black/5 border-border/50 focus:shadow-lg focus:shadow-amber-500/10 transition-all duration-300"
+                          className="rounded-l-none shadow-inner shadow-black/5 border-border/50 focus:shadow-lg focus:shadow-amber-500/10 transition-all duration-300 placeholder:text-muted-foreground/60"
                         />
                       </div>
                       <button
@@ -288,7 +288,7 @@ export default function ShortenerPage() {
                     value={currentTag}
                     onChange={(e) => setCurrentTag(e.target.value)}
                     onKeyPress={handleTagKeyPress}
-                    className="flex-1 shadow-inner shadow-black/5 border-border/50 focus:shadow-lg focus:shadow-green-500/10 transition-all duration-300"
+                    className="flex-1 shadow-inner shadow-black/5 border-border/50 focus:shadow-lg focus:shadow-green-500/10 transition-all duration-300 placeholder:text-muted-foreground/60"
                   />
                   <Button
                     onClick={handleAddTag}

@@ -37,8 +37,10 @@ export default function NotFound() {
             </Link>
           </Button>
           
-          <Button variant="outline" onClick={() => window.history.back()}>
-            이전 페이지로
+          <Button variant="outline" asChild>
+            <Link href="/dashboard">
+              대시보드로
+            </Link>
           </Button>
         </div>
         

@@ -41,12 +41,24 @@ interface ButtonProps
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild = false, ...props }, ref) => {
+  ({ className, variant, size, asChild = false, onClick, ...props }, ref) => {
     const Comp = asChild ? Slot : ("button" as const)
+    
+    // asChild가 true일 때는 onClick을 전달하지 않음 (Slot이 처리)
+    // asChild가 false일 때만 onClick 핸들러를 안전하게 처리
+    const buttonProps = asChild ? {} : {
+      onClick: (event: React.MouseEvent<HTMLButtonElement>) => {
+        if (onClick && typeof onClick === 'function') {
+          onClick(event)
+        }
+      }
+    }
+    
     return (
       <Comp
         className={cn(buttonVariants({ variant, size, className }))}
         ref={ref as any}
+        {...buttonProps}
         {...props}
       />
     )
